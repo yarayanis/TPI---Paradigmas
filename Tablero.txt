@@ -1,157 +1,296 @@
-#AUTOMATA
+//La clase Automata representa una célula individual dentro del tablero del Juego de la Vida de Conway, hereda de Object y pertenece al paquete JuegoDeLaVidaDeConway. Tiene la variable de instancia estado (almacenada como slot) para registrar si la célula está viva (#vivo) o muerta (#muerto), y se encarga de informar su estado, cambiarlo o alternarlo y calcular cuál será su estado en la siguiente generación según la cantidad de vecinos vivos.
 
-#Clase Automata (Class side):
-Object class << Automata class
-	slots: {}
-
-#Clase Automata (Inst. side):
 Object << #Automata
-	slots: {};
-	package: 'Tablero-Conway'
+	slots: { #estado };
+	package: 'JuegoDeLaVidaDeConway'
 
-#CAPA 
-//Representa un plano bidimensional (eje Z) dentro del tablero tridimensional del juego.
-//Administra una grilla de filas por columnas compuesta por instancias de Automata. Valida coordenadas dentro del plano, cuenta autómatas vivos en la vecindad inmediata y gestiona el cálculo y la aplicación simultánea de los estados futuros de las celdas.
-//Colaborador con las clases "Tablero" y "Automata".
+//El método estaVivo no recibe parámetros y devuelve un booleano indicando si el autómata está vivo actualmente. Evalúa si la variable de instancia estado coincide exactamente con el símbolo #vivo (estado == #vivo), retornando true cuando lo está y false en caso contrario.
 
-#Clase Capa (Class side):
-Object class << Capa class
-	slots: {}
+estaVivo
+	^ estado == #vivo
 
-#Clase Capa (Inst. side):
-Object << #Capa
-	slots: { #numero . #filas . #columnas . #matrizAutomatas };
-	package: 'Tablero-Conway'
+//El método aplicarEstado: recibe un parámetro llamado nuevoEstado (esperado como #vivo o #muerto) y asigna ese valor directamente a la variable de instancia estado. Se utiliza tanto para establecer el estado inicial de una celda como para aplicar los estados calculados al cerrar una generación.
 
-#MÉTODOS DE CAPA
+aplicarEstado: nuevoEstado
+	estado := nuevoEstado
 
-#1er Método
-aplicarEstadosFuturos: unaMatrizEstados
-	1 to: filas do: [ :f |
-		1 to: columnas do: [ :c |
-			(self automataEnFila: f columna: c) actualizarEstadoA: ((unaMatrizEstados at: f) at: c) ] ].
+//El método alternarEstado no recibe parámetros e invierte el estado actual del autómata. Consulta si la célula está viva mediante self estaVivo: si es verdadero le aplica el estado #muerto, y si es falso le aplica el estado #vivo, permitiendo prender o apagar celdas de forma directa, por ejemplo al hacer clic en la interfaz.
 
-#2do Método
-automataEnFila: f columna: c
-	(self esPosicionValidaFila: f columna: c)
-		ifFalse: [ self error: 'Coordenada fuera de los límites de la capa' ].
-	^ (matrizAutomatas at: f) at: c
+alternarEstado
+	self estaVivo
+		ifTrue: [ self aplicarEstado: #muerto ]
+		ifFalse: [ self aplicarEstado: #vivo ]
 
-#3er Método
-calcularEstadosFuturosEn: unTablero
-	^ (1 to: filas) collect: [ :f |
-		(1 to: columnas) collect: [ :c |
+//El método calcularProximoEstadoConVecinos: recibe la cantidad de vecinos vivos (cantidadVecinos) y devuelve el símbolo (#vivo o #muerto) que corresponderá en la próxima generación sin modificar el estado actual del autómata. Si la célula está viva, devuelve #vivo solo cuando tiene 2 o 3 vecinos vivos y #muerto en cualquier otro caso; si está muerta, devuelve #vivo únicamente cuando tiene exactamente 3 vecinos vivos y #muerto en caso contrario.
 
-			| vecinos automata |
-			vecinos := unTablero contarVecinosVivosEnFila: f columna: c capa: numero.
-			automata := self automataEnFila: f columna: c.
-			automata calcularProximoEstadoConVecinos: vecinos ] ]
+calcularProximoEstadoConVecinos: cantidadVecinos
+	(self estaVivo)
+		ifTrue: [ ^ (cantidadVecinos = 2 or: [ cantidadVecinos = 3 ])
+				ifTrue: [ #vivo ]
+				ifFalse: [ #muerto ] ]
+		ifFalse: [ ^ (cantidadVecinos = 3)
+				ifTrue: [ #vivo ]
+				ifFalse: [ #muerto ] ]
 
-#4to Método
+//La clase Tablero representa la grilla bidimensional donde se alojan y evolucionan los autómatas del Juego de la Vida de Conway, hereda de Object y pertenece al paquete JuegoDeLaVidaDeConway. Tiene las variables de instancia filas (largo), columnas (ancho) y casillas (matriz de arrays anidados con instancias de Automata), y se encarga de crear o redimensionar el tablero, acceder a sus celdas, contar vecinos vivos, calcular y mostrar la población y avanzar las generaciones de forma simultánea.
+
+Object << #Tablero
+	slots: { #filas . #columnas . #casillas };
+	package: 'JuegoDeLaVidaDeConway'
+
+//El método alternarEnFila:columna: recibe dos parámetros numéricos (fila y columna) y no devuelve un valor explícito distinto de la casilla/receptor. Obtiene el autómata ubicado en esa posición mediante self casillaEnFila: fila columna: columna y le envía el mensaje alternarEstado para cambiarlo entre vivo y muerto.
+
+alternarEnFila: fila columna: columna
+	(self casillaEnFila: fila columna: columna) alternarEstado
+
+//El método avanzarGeneracion no recibe parámetros y hace evolucionar todo el tablero a la siguiente generación respetando la evaluación simultánea de las reglas de Conway. Primero recorre todas las filas y columnas para construir una estructura temporal (proximosEstados) donde guarda el próximo estado de cada autómata según su cantidad de vecinos vivos (contarVecinosFila:columna: y calcularProximoEstadoConVecinos:), y luego recorre nuevamente la grilla para aplicar todos esos estados resultantes sobre cada casilla mediante aplicarEstado:
+
+avanzarGeneracion
+	| proximosEstados |
+	proximosEstados := (1 to: filas) collect: [ :i |
+		(1 to: columnas) collect: [ :j |
+			| automata vecinos |
+			automata := self casillaEnFila: i columna: j.
+			vecinos := self contarVecinosFila: i columna: j.
+			automata calcularProximoEstadoConVecinos: vecinos ] ].
+
+	1 to: filas do: [ :i |
+		1 to: columnas do: [ :j |
+			(self casillaEnFila: i columna: j)
+				aplicarEstado: ((proximosEstados at: i) at: j) ] ]
+
+//El método calcularPoblacion no recibe parámetros y devuelve un número entero con la cantidad total de autómatas vivos en el tablero. Inicializa un contador (total) en 0, recorre todas las filas de 1 a filas y todas las columnas de 1 a columnas, y suma 1 por cada casilla cuyo método estaVivo devuelva verdadero.
+
 calcularPoblacion
-	^ matrizAutomatas sum: [ :unaFila |
-		unaFila count: [ :automata | automata estaVivo ] ]
+	| total |
+	total := 0.
+	1 to: filas do: [ :i |
+		1 to: columnas do: [ :j |
+			((self casillaEnFila: i columna: j) estaVivo)
+				ifTrue: [ total := total + 1 ] ] ].
+	^ total
 
-#5to Método
-contarVivosAlrededorDeFila: unaFila columna: unaColumna incluyendoCentro: unBooleano
+//El método cambiarAncho: recibe un parámetro llamado nuevoAncho y modifica el ancho del tablero manteniendo el largo actual. Internamente invoca a self configurarFilas: filas columnas: nuevoAncho para regenerar la matriz de casillas con la cantidad de filas existente y el nuevo número de columnas.
 
-	| vivos |
-	vivos := 0.
-	(unaFila - 1) to: (unaFila + 1) do: [ :f |
-		(unaColumna - 1) to: (unaColumna + 1) do: [ :c |
+cambiarAncho: nuevoAncho
+	self configurarFilas: filas columnas: nuevoAncho
 
-			| esCentro |
-			esCentro := (f = unaFila) and: [ c = unaColumna ].
-			((unBooleano or: [ esCentro not ]) and: [ self esPosicionValidaFila: f columna: c ])
-				ifTrue: [
-					((self automataEnFila: f columna: c) estaVivo)
-						ifTrue: [ vivos := vivos + 1 ] ] ] ].
-	^ vivos
+//El método cambiarLargo: recibe un parámetro llamado nuevoLargo y modifica el largo del tablero manteniendo el ancho actual. Internamente invoca a self configurarFilas: nuevoLargo columnas: columnas para regenerar la matriz de casillas con el nuevo número de filas y la cantidad de columnas existente.
 
-#6to Método
-esPosicionValidaFila: f columna: c
+cambiarLargo: nuevoLargo
+	self configurarFilas: nuevoLargo columnas: columnas
+
+//El método casillaEnFila:columna: recibe dos parámetros (fila y columna) y devuelve el objeto Automata almacenado en esa coordenada del tablero. Accede primero a la fila correspondiente en la variable de instancia casillas ((casillas at: fila)) y luego a la posición de la columna ((... at: columna))
+
+casillaEnFila: fila columna: columna
+	^ (casillas at: fila) at: columna
+
+//El método columnas no recibe parámetros y devuelve el valor almacenado en la variable de instancia columnas, indicando la cantidad actual de columnas (ancho) del tablero.
+
+columnas
+	^ columnas
+
+//El método configurarFilas:columnas: recibe dos parámetros (cantidadFilas y cantidadColumnas) y construye o redimensiona la grilla del tablero. Asigna ambos valores a las variables de instancia filas y columnas, y crea en casillas una colección de filas de 1 a filas donde cada fila contiene una colección de 1 a columnas inicializada con nuevas instancias de Automata.
+
+configurarFilas: cantidadFilas columnas: cantidadColumnas
+	filas := cantidadFilas.
+	columnas := cantidadColumnas.
+	casillas := (1 to: filas) collect: [ :i |
+		(1 to: columnas) collect: [ :j | Automata new ] ]
+
+//El método contarVecinosFila:columna: recibe dos coordenadas (fila y columna) y devuelve un entero con la cantidad de celdas vecinas vivas alrededor de esa posición. Recorre los desplazamientos relativos de filas y columnas entre -1 y 1, omite la propia celda cuando ambos desplazamientos son 0, calcula las coordenadas vecinas (nf y nc) y suma 1 a un contador (cantidad) cada vez que la posición está dentro de los límites del tablero (estaDentroFila:columna:) y el autómata de esa casilla responde verdadero a estaVivo.
+
+contarVecinosFila: fila columna: columna
+	| cantidad |
+	cantidad := 0.
+	(-1 to: 1) do: [ :df |
+		(-1 to: 1) do: [ :dc |
+			| nf nc |
+			(df = 0 and: [ dc = 0 ]) ifFalse: [
+				nf := fila + df.
+				nc := columna + dc.
+				((self estaDentroFila: nf columna: nc)
+					and: [ (self casillaEnFila: nf columna: nc) estaVivo ])
+					ifTrue: [ cantidad := cantidad + 1 ] ] ] ].
+	^ cantidad
+
+//El método estaDentroFila:columna: recibe dos coordenadas (f y c) y devuelve un booleano indicando si la posición cae dentro de los límites válidos de la grilla. Verifica que f esté entre 1 y filas y que c esté entre 1 y columnas.
+
+estaDentroFila: f columna: c
 	^ (f between: 1 and: filas) and: [ c between: 1 and: columnas ]
 
-#7mo Método 
-inicializarNumero: unNumero filas: cantFilas columnas: cantColumnas
-	numero := unNumero.
-	filas := cantFilas.
-	columnas := cantColumnas.
-	matrizAutomatas := (1 to: filas) collect: [ :f |
-		(1 to: columnas) collect: [ :c | Automata new ] ].
+//El método filas no recibe parámetros y devuelve el valor almacenado en la variable de instancia filas, indicando la cantidad actual de filas (largo) del tablero
 
-#TABLERO 
-//Representa el espacio tridimensional donde se desarrolla el Juego de la Vida de Conway.
-//Esta compuesto por una colección ordenada de objetos Capa (que representan el eje Z) y coordina las operaciones globales de la simulación: validación de límites en 3D, conteo de los 26 vecinos circundantes de cada celda, cálculo de la población total y transición simultánea entre generaciones mediante doble buffer.
-//Por el momento colaboran con él "Capa" y "Automata".
+filas
+	^ filas
 
-#Clase Tablero (Class side):
-//Crea y devuelve una nueva instancia de Tablero con las dimensiones 3D especificadas.
+//El método initialize no recibe parámetros y establece el estado inicial por defecto de cada nueva instancia de Tablero. Invoca a super initialize y llama a self configurarFilas: 10 columnas: 10 para crear una grilla inicial de 10 por 10 autómatas.
 
-Object class << Tablero class
-	slots: {}
+initialize
+	super initialize.
+	self configurarFilas: 10 columnas: 10
 
-#Clase Tablero (Inst. side):
-Object << #Tablero
-	slots: { #filas . #columnas . #capas };
-	package: 'Tablero-Conway'
+//El método mostrarPoblacion no recibe parámetros y escribe en el Transcript la cantidad total de autómatas vivos junto con una representación visual de la grilla. Primero imprime la línea con el total obtenido de self calcularPoblacion y luego recorre cada fila y columna mostrando 'O ' si la casilla está viva (estaVivo) o '. ' si está muerta, separando cada fila con un salto de línea.
 
-#MÉTODOS DE TABLERO
+mostrarPoblacion
+	Transcript
+		show: 'Poblacion: ', self calcularPoblacion printString;
+		cr.
+	1 to: filas do: [ :i |
+		1 to: columnas do: [ :j |
+			| simbolo |
+			simbolo := ((self casillaEnFila: i columna: j) estaVivo)
+				ifTrue: [ 'O ' ]
+				ifFalse: [ '. ' ].
+			Transcript show: simbolo ].
+		Transcript cr ]
 
-#1er Método 
-//Devuelve el Automata ubicado en la coordenada tridimensional (f, c, z). 
+//La clase TableroVista provee una interfaz gráfica interactiva en Morphic para visualizar y controlar un tablero del Juego de la Vida de Conway, hereda de Morph y pertenece al paquete JuegoDeLaVidaDeConway. Declara las variables de instancia tablero, tamanoCelda, corriendo, generacion y etiquetaInfo, y se encarga de dibujar la grilla, responder a clics del usuario, avanzar generaciones de forma manual o automática, redimensionar el tablero y mostrar en tiempo real la generación y población actuales.
 
-automataEnFila: f columna: c capa: z
-	^ (self capaNumero: z) automataEnFila: f columna: c 
+Morph << #TableroVista
+	slots: { #tablero . #tamanoCelda . #corriendo . #generacion . #etiquetaInfo };
+	package: 'JuegoDeLaVidaDeConway'
 
-#2do Método 
-avanzarGeneracion
+//El método abrirVentana no recibe parámetros y construye y abre en el mundo de Morphic una ventana interactiva (SystemWindow titulada 'Juego de la Vida de Conway') que combina la vista del tablero con una barra superior de controles. Crea los botones Siguiente Gen (vinculado a #paso), Play / Pausa (que invierte el booleano corriendo), Cambiar Tamano (vinculado a #pedirNuevoTamano) y Limpiar (que reconfigura el tablero con sus filas y columnas actuales, reinicia generacion en 0, actualiza la información y marca la vista para redibujar), agrega la etiqueta etiquetaInfo a la barra y ubica ambos componentes dentro de la ventana antes de abrirla con openInWorld.
 
-	| estadosFuturosPorCapa |
-	estadosFuturosPorCapa := capas collect: [ :unaCapa |
-		unaCapa calcularEstadosFuturosEn: self ].
-	
-	capas with: estadosFuturosPorCapa do: [ :unaCapa :matrizEstados |
-		unaCapa aplicarEstadosFuturos: matrizEstados ]. 
+abrirVentana
+	| ventana barra btnPaso btnPlay btnTamano btnLimpiar |
+	ventana := SystemWindow labelled: 'Juego de la Vida de Conway'.
+	barra := Morph new
+		layoutPolicy: RowLayout new;
+		color: Color darkGray;
+		yourself.
 
-#3er Método 
-calcularPoblacion
-	^ capas sum: [ :unaCapa | unaCapa calcularPoblacion ] 
+	btnPaso := SimpleButtonMorph new
+		label: 'Siguiente Gen';
+		target: self;
+		actionSelector: #paso;
+		yourself.
 
-#4to Método 
-//Devuelve la Capa correspondiente al índice z, o lanza un error si está fuera de rango.
+	btnPlay := SimpleButtonMorph new
+		label: 'Play / Pausa';
+		target: [ corriendo := corriendo not ];
+		actionSelector: #value;
+		yourself.
 
-capaNumero: z
-	(z between: 1 and: capas size)
-		ifFalse: [ self error: 'Número de capa inválido' ].
-	^ capas at: z 
+	btnTamano := SimpleButtonMorph new
+		label: 'Cambiar Tamano';
+		target: self;
+		actionSelector: #pedirNuevoTamano;
+		yourself.
 
-#5to Método 
-contarVecinosVivosEnFila: unaFila columna: unaColumna capa: unaCapa
+	btnLimpiar := SimpleButtonMorph new
+		label: 'Limpiar';
+		target: [
+			tablero configurarFilas: tablero filas columnas: tablero columnas.
+			generacion := 0.
+			self actualizarInfo.
+			self changed ];
+		actionSelector: #value;
+		yourself.
 
-	| totalVecinos |
-	totalVecinos := 0.
-	(unaCapa - 1) to: (unaCapa + 1) do: [ :z |
-		(z between: 1 and: capas size) ifTrue: [
+	self actualizarInfo.
+	barra
+		addMorphBack: btnPaso;
+		addMorphBack: btnPlay;
+		addMorphBack: btnTamano;
+		addMorphBack: btnLimpiar;
+		addMorphBack: etiquetaInfo.
 
-			| capaActual esMismaCapa |
-			capaActual := self capaNumero: z.
-			esMismaCapa := (z = unaCapa).
-			totalVecinos := totalVecinos + (capaActual 
-				contarVivosAlrededorDeFila: unaFila 
-				columna: unaColumna 
-				incluyendoCentro: esMismaCapa not) ] ].
-	^ totalVecinos 
+	ventana addMorph: barra frame: (0@0 corner: 1@0.12).
+	ventana addMorph: self frame: (0@0.12 corner: 1@1).
+	ventana openInWorld
 
-#6to Método 
-//Inicializa las dimensiones del tablero y crea la colección de instancias de Capa.
+//El método actualizarDimensionVisual no recibe parámetros y ajusta el tamaño gráfico del Morph de acuerdo con las dimensiones del tablero y el tamaño de cada celda. Calcula el ancho como tablero columnas * tamanoCelda y el alto como tablero filas * tamanoCelda mediante el punto @, asigna ese tamaño con self extent: y envía self changed para solicitar el redibujado.
 
-inicializarConFilas: cantFilas columnas: cantColumnas capas: cantCapas
-	filas := cantFilas.
-	columnas := cantColumnas.
-	capas := (1 to: cantCapas) collect: [ :z |
-		Capa numero: z filas: filas columnas: columnas ].
+actualizarDimensionVisual
+	self extent: (tablero columnas * tamanoCelda) @ (tablero filas * tamanoCelda).
+	self changed
 
-#7mo Método 
-revivirAutomataEnFila: f columna: c capa: z
-	(self automataEnFila: f columna: c capa: z) nacer. 
+//El método actualizarInfo no recibe parámetros y refresca el texto que muestra la generación y la población viva actual en la interfaz. Si etiquetaInfo no es nil, actualiza su contenido concatenando el número de generación actual (generacion printString) y el total de células vivas obtenido de tablero calcularPoblacion printString.
+
+actualizarInfo
+	etiquetaInfo ifNotNil: [
+		etiquetaInfo contents:
+			'  Generacion: ', generacion printString,
+			'  |  Poblacion: ', tablero calcularPoblacion printString ]
+
+//El método drawOn: recibe un lienzo gráfico (aCanvas) y dibuja la grilla completa del tablero sobre la pantalla. Primero invoca a super drawOn: aCanvas y luego recorre cada fila de 1 a tablero filas y cada columna de 1 a tablero columnas para calcular el rectángulo de cada celda según self left, self top y tamanoCelda; pinta cada celda de verde oscuro (Color green muchDarker) si su autómata está vivo (estaVivo) o de blanco (Color white) si está muerto, y traza su borde de 1 píxel en gris claro (Color lightGray).
+
+drawOn: aCanvas
+	super drawOn: aCanvas.
+	1 to: tablero filas do: [ :f |
+		1 to: tablero columnas do: [ :c |
+			| rect colorCelda |
+			rect := ((self left + ((c - 1) * tamanoCelda)) @ (self top + ((f - 1) * tamanoCelda)))
+				extent: (tamanoCelda @ tamanoCelda).
+			colorCelda := ((tablero casillaEnFila: f columna: c) estaVivo)
+				ifTrue: [ Color green muchDarker ]
+				ifFalse: [ Color white ].
+			aCanvas fillRectangle: rect color: colorCelda.
+			aCanvas frameRectangle: rect width: 1 color: Color lightGray ] ]
+
+//El método handlesMouseDown: recibe un evento (anEvent) y devuelve true para indicar que este Morph acepta y maneja los eventos de clic del mouse sobre su área.
+
+handlesMouseDown: anEvent
+	^ true
+
+//El método initialize no recibe parámetros y configura los valores iniciales de la vista interactiva al crearse. Invoca a super initialize, crea una nueva instancia de Tablero en tablero, fija tamanoCelda en 24, inicializa corriendo en false y generacion en 0, crea la etiqueta etiquetaInfo como un StringMorph blanco, actualiza la información en pantalla con self actualizarInfo y ajusta el tamaño visual mediante self actualizarDimensionVisual.
+
+initialize
+	super initialize.
+	tablero := Tablero new.
+	tamanoCelda := 24.
+	corriendo := false.
+	generacion := 0.
+	etiquetaInfo := StringMorph new
+		color: Color white;
+		yourself.
+	self actualizarInfo.
+	self actualizarDimensionVisual
+
+//El método mouseDown: recibe un evento del mouse (anEvent) y alterna el estado de la celda sobre la que se hizo clic. Calcula la posición relativa respecto de self position, convierte las coordenadas x e y en índices de columna y fila dividiendo por tamanoCelda y sumando 1, y si la posición está dentro del tablero (estaDentroFila:columna:), invoca alternarEnFila:columna: sobre tablero, llama a self actualizarInfo y marca la vista con self changed para redibujarla.
+
+mouseDown: anEvent
+	| posRelativa fila columna |
+	posRelativa := anEvent position - self position.
+	columna := (posRelativa x // tamanoCelda) + 1.
+	fila := (posRelativa y // tamanoCelda) + 1.
+	(tablero estaDentroFila: fila columna: columna) ifTrue: [
+		tablero alternarEnFila: fila columna: columna.
+		self actualizarInfo.
+		self changed ]
+
+//El método paso no recibe parámetros y hace avanzar la simulación una generación desde la interfaz. Envía avanzarGeneracion a tablero, incrementa generacion en 1, actualiza la etiqueta con self actualizarInfo y solicita el redibujado mediante self changed.
+
+paso
+	tablero avanzarGeneracion.
+	generacion := generacion + 1.
+	self actualizarInfo.
+	self changed
+
+//El método pedirNuevoTamano no recibe parámetros y solicita mediante cuadros de diálogo del sistema la nueva cantidad de filas y de columnas para el tablero. Pide primero la cantidad de filas y luego la de columnas usando UIManager default request:initialAnswer: (cancelando con ^ self si el usuario cierra algún diálogo), convierte ambos valores a enteros usando los valores actuales como respaldo si no son válidos, y si ambos son mayores que 0, reconfigura el tablero con configurarFilas:columnas:, reinicia generacion en 0, actualiza la etiqueta con self actualizarInfo y ajusta el tamaño visual con self actualizarDimensionVisual.
+
+pedirNuevoTamano
+	| fTexto cTexto f c |
+	fTexto := UIManager default request: 'Cantidad de filas (largo):' initialAnswer: tablero filas printString.
+	fTexto ifNil: [ ^ self ].
+	cTexto := UIManager default request: 'Cantidad de columnas (ancho):' initialAnswer: tablero columnas printString.
+	cTexto ifNil: [ ^ self ].
+	f := fTexto asInteger ifNil: [ tablero filas ].
+	c := cTexto asInteger ifNil: [ tablero columnas ].
+	(f > 0 and: [ c > 0 ]) ifTrue: [
+		tablero configurarFilas: f columnas: c.
+		generacion := 0.
+		self actualizarInfo.
+		self actualizarDimensionVisual ]
+
+//El método step no recibe parámetros y ejecuta un paso de simulación automático cuando la vista está en modo activo. Evalúa corriendo ifTrue: [ self paso ], por lo que solo avanza una generación (y actualiza la información y el dibujo) si corriendo es verdadero.
+
+step
+	corriendo ifTrue: [ self paso ]
+
+//El método stepTime no recibe parámetros y devuelve el intervalo de tiempo en milisegundos entre cada ejecución automática del ciclo de pasos de Morphic. Retorna el valor entero 300 (comentado como milisegundos entre generaciones)
+
+stepTime
+	^ 300 "milisegundos entre generaciones"
