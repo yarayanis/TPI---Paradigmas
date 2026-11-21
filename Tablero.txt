@@ -1,0 +1,157 @@
+#AUTOMATA
+
+#Clase Automata (Class side):
+Object class << Automata class
+	slots: {}
+
+#Clase Automata (Inst. side):
+Object << #Automata
+	slots: {};
+	package: 'Tablero-Conway'
+
+#CAPA 
+//Representa un plano bidimensional (eje Z) dentro del tablero tridimensional del juego.
+//Administra una grilla de filas por columnas compuesta por instancias de Automata. Valida coordenadas dentro del plano, cuenta autómatas vivos en la vecindad inmediata y gestiona el cálculo y la aplicación simultánea de los estados futuros de las celdas.
+//Colaborador con las clases "Tablero" y "Automata".
+
+#Clase Capa (Class side):
+Object class << Capa class
+	slots: {}
+
+#Clase Capa (Inst. side):
+Object << #Capa
+	slots: { #numero . #filas . #columnas . #matrizAutomatas };
+	package: 'Tablero-Conway'
+
+#MÉTODOS DE CAPA
+
+#1er Método
+aplicarEstadosFuturos: unaMatrizEstados
+	1 to: filas do: [ :f |
+		1 to: columnas do: [ :c |
+			(self automataEnFila: f columna: c) actualizarEstadoA: ((unaMatrizEstados at: f) at: c) ] ].
+
+#2do Método
+automataEnFila: f columna: c
+	(self esPosicionValidaFila: f columna: c)
+		ifFalse: [ self error: 'Coordenada fuera de los límites de la capa' ].
+	^ (matrizAutomatas at: f) at: c
+
+#3er Método
+calcularEstadosFuturosEn: unTablero
+	^ (1 to: filas) collect: [ :f |
+		(1 to: columnas) collect: [ :c |
+
+			| vecinos automata |
+			vecinos := unTablero contarVecinosVivosEnFila: f columna: c capa: numero.
+			automata := self automataEnFila: f columna: c.
+			automata calcularProximoEstadoConVecinos: vecinos ] ]
+
+#4to Método
+calcularPoblacion
+	^ matrizAutomatas sum: [ :unaFila |
+		unaFila count: [ :automata | automata estaVivo ] ]
+
+#5to Método
+contarVivosAlrededorDeFila: unaFila columna: unaColumna incluyendoCentro: unBooleano
+
+	| vivos |
+	vivos := 0.
+	(unaFila - 1) to: (unaFila + 1) do: [ :f |
+		(unaColumna - 1) to: (unaColumna + 1) do: [ :c |
+
+			| esCentro |
+			esCentro := (f = unaFila) and: [ c = unaColumna ].
+			((unBooleano or: [ esCentro not ]) and: [ self esPosicionValidaFila: f columna: c ])
+				ifTrue: [
+					((self automataEnFila: f columna: c) estaVivo)
+						ifTrue: [ vivos := vivos + 1 ] ] ] ].
+	^ vivos
+
+#6to Método
+esPosicionValidaFila: f columna: c
+	^ (f between: 1 and: filas) and: [ c between: 1 and: columnas ]
+
+#7mo Método 
+inicializarNumero: unNumero filas: cantFilas columnas: cantColumnas
+	numero := unNumero.
+	filas := cantFilas.
+	columnas := cantColumnas.
+	matrizAutomatas := (1 to: filas) collect: [ :f |
+		(1 to: columnas) collect: [ :c | Automata new ] ].
+
+#TABLERO 
+//Representa el espacio tridimensional donde se desarrolla el Juego de la Vida de Conway.
+//Esta compuesto por una colección ordenada de objetos Capa (que representan el eje Z) y coordina las operaciones globales de la simulación: validación de límites en 3D, conteo de los 26 vecinos circundantes de cada celda, cálculo de la población total y transición simultánea entre generaciones mediante doble buffer.
+//Por el momento colaboran con él "Capa" y "Automata".
+
+#Clase Tablero (Class side):
+//Crea y devuelve una nueva instancia de Tablero con las dimensiones 3D especificadas.
+
+Object class << Tablero class
+	slots: {}
+
+#Clase Tablero (Inst. side):
+Object << #Tablero
+	slots: { #filas . #columnas . #capas };
+	package: 'Tablero-Conway'
+
+#MÉTODOS DE TABLERO
+
+#1er Método 
+//Devuelve el Automata ubicado en la coordenada tridimensional (f, c, z). 
+
+automataEnFila: f columna: c capa: z
+	^ (self capaNumero: z) automataEnFila: f columna: c 
+
+#2do Método 
+avanzarGeneracion
+
+	| estadosFuturosPorCapa |
+	estadosFuturosPorCapa := capas collect: [ :unaCapa |
+		unaCapa calcularEstadosFuturosEn: self ].
+	
+	capas with: estadosFuturosPorCapa do: [ :unaCapa :matrizEstados |
+		unaCapa aplicarEstadosFuturos: matrizEstados ]. 
+
+#3er Método 
+calcularPoblacion
+	^ capas sum: [ :unaCapa | unaCapa calcularPoblacion ] 
+
+#4to Método 
+//Devuelve la Capa correspondiente al índice z, o lanza un error si está fuera de rango.
+
+capaNumero: z
+	(z between: 1 and: capas size)
+		ifFalse: [ self error: 'Número de capa inválido' ].
+	^ capas at: z 
+
+#5to Método 
+contarVecinosVivosEnFila: unaFila columna: unaColumna capa: unaCapa
+
+	| totalVecinos |
+	totalVecinos := 0.
+	(unaCapa - 1) to: (unaCapa + 1) do: [ :z |
+		(z between: 1 and: capas size) ifTrue: [
+
+			| capaActual esMismaCapa |
+			capaActual := self capaNumero: z.
+			esMismaCapa := (z = unaCapa).
+			totalVecinos := totalVecinos + (capaActual 
+				contarVivosAlrededorDeFila: unaFila 
+				columna: unaColumna 
+				incluyendoCentro: esMismaCapa not) ] ].
+	^ totalVecinos 
+
+#6to Método 
+//Inicializa las dimensiones del tablero y crea la colección de instancias de Capa.
+
+inicializarConFilas: cantFilas columnas: cantColumnas capas: cantCapas
+	filas := cantFilas.
+	columnas := cantColumnas.
+	capas := (1 to: cantCapas) collect: [ :z |
+		Capa numero: z filas: filas columnas: columnas ].
+
+#7mo Método 
+revivirAutomataEnFila: f columna: c capa: z
+	(self automataEnFila: f columna: c capa: z) nacer. 
