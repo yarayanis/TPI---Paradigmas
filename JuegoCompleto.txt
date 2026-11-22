@@ -1,0 +1,384 @@
+//==============================================================================
+// CLASE AUTOMATA
+//==============================================================================
+
+//La clase Automata representa una célula individual dentro del tablero del Juego de la Vida de Conway, hereda de Object y pertenece al paquete JuegoDeLaVidaDeConway. Tiene la variable de instancia estado (almacenada como slot) para registrar si la célula está viva (#vivo) o muerta (#muerto), y se encarga de informar su estado, cambiarlo o alternarlo y calcular cuál será su estado en la siguiente generación según la cantidad de vecinos vivos.
+
+Object << #Automata
+	slots: { #estado };
+	package: 'JuegoDeLaVidaDeConway'
+
+//El método estaVivo no recibe parámetros y devuelve un booleano indicando si el autómata está vivo actualmente. Evalúa si la variable de instancia estado coincide exactamente con el símbolo #vivo (estado == #vivo), retornando true cuando lo está y false en caso contrario.
+
+estaVivo
+	^ estado == #vivo
+
+//El método aplicarEstado: recibe un parámetro llamado nuevoEstado (esperado como #vivo o #muerto) y asigna ese valor directamente a la variable de instancia estado. Se utiliza tanto para establecer el estado inicial de una celda como para aplicar los estados calculados al cerrar una generación.
+
+aplicarEstado: nuevoEstado
+	estado := nuevoEstado
+
+//El método alternarEstado no recibe parámetros e invierte el estado actual del autómata. Consulta si la célula está viva mediante self estaVivo: si es verdadero le aplica el estado #muerto, y si es falso le aplica el estado #vivo, permitiendo prender o apagar celdas de forma directa, por ejemplo al hacer clic en la interfaz.
+
+alternarEstado
+	self estaVivo
+		ifTrue: [ self aplicarEstado: #muerto ]
+		ifFalse: [ self aplicarEstado: #vivo ]
+
+//El método calcularProximoEstadoConVecinos: recibe la cantidad de vecinos vivos (cantidadVecinos) y devuelve el símbolo (#vivo o #muerto) que corresponderá en la próxima generación sin modificar el estado actual del autómata. Si la célula está viva, devuelve #vivo solo cuando tiene 2 o 3 vecinos vivos y #muerto en cualquier otro caso; si está muerta, devuelve #vivo únicamente cuando tiene exactamente 3 vecinos vivos y #muerto en caso contrario.
+
+calcularProximoEstadoConVecinos: cantidadVecinos
+	(self estaVivo)
+		ifTrue: [ ^ (cantidadVecinos = 2 or: [ cantidadVecinos = 3 ])
+				ifTrue: [ #vivo ]
+				ifFalse: [ #muerto ] ]
+		ifFalse: [ ^ (cantidadVecinos = 3)
+				ifTrue: [ #vivo ]
+				ifFalse: [ #muerto ] ]
+
+
+//==============================================================================
+// CLASE TABLERO (INCLUYE NUEVO SLOT TOROIDAL Y MÉTODOS DE BORDE TOROIDAL Y ALEATORIEDAD)
+//==============================================================================
+
+//La clase Tablero representa la grilla bidimensional donde se alojan y evolucionan los autómatas del Juego de la Vida de Conway, hereda de Object y pertenece al paquete JuegoDeLaVidaDeConway. Tiene las variables de instancia filas (largo), columnas (ancho), casillas (matriz de arrays anidados con instancias de Automata) y el nuevo atributo booleano toroidal (que indica si los bordes de la grilla están conectados entre extremos opuestos o si son finitos). Se encarga de crear o redimensionar el tablero, poblarlo aleatoriamente, acceder a sus celdas, contar vecinos vivos (en modo plano o toroidal), calcular y mostrar la población y avanzar las generaciones de forma simultánea.
+
+Object << #Tablero
+	slots: { #filas . #columnas . #casillas . #toroidal };
+	package: 'JuegoDeLaVidaDeConway'
+
+//El método aleatorizar no recibe parámetros y puebla el tablero con una distribución aleatoria de autómatas vivos y muertos utilizando una densidad por defecto del 35% (0.35). Delega la operación en self aleatorizarDensidad: 0.35.
+
+aleatorizar
+	self aleatorizarDensidad: 0.35
+
+//El método aleatorizarDensidad: recibe un número decimal llamado probabilidadVivo (entre 0.0 y 1.0) y recorre todas las filas y columnas del tablero asignando a cada autómata el estado #vivo si un número aleatorio generado con Random new next es menor que probabilidadVivo, o #muerto en caso contrario, mediante aplicarEstado:.
+
+aleatorizarDensidad: probabilidadVivo
+	| random |
+	random := Random new.
+	1 to: filas do: [ :i |
+		1 to: columnas do: [ :j |
+			| estadoElegido |
+			estadoElegido := (random next < probabilidadVivo)
+				ifTrue: [ #vivo ]
+				ifFalse: [ #muerto ].
+			(self casillaEnFila: i columna: j) aplicarEstado: estadoElegido ] ]
+
+//El método alternarEnFila:columna: recibe dos parámetros numéricos (fila y columna) y no devuelve un valor explícito distinto de la casilla/receptor. Obtiene el autómata ubicado en esa posición mediante self casillaEnFila: fila columna: columna y le envía el mensaje alternarEstado para cambiarlo entre vivo y muerto.
+
+alternarEnFila: fila columna: columna
+	(self casillaEnFila: fila columna: columna) alternarEstado
+
+//El método alternarToroidal no recibe parámetros e invierte el estado booleano de la variable de instancia toroidal (si estaba en false pasa a true y viceversa), devolviendo el nuevo valor resultante para activar o desactivar el comportamiento de bordes conectados.
+
+alternarToroidal
+	toroidal := toroidal not.
+	^ toroidal
+
+//El método avanzarGeneracion no recibe parámetros y hace evolucionar todo el tablero a la siguiente generación respetando la evaluación simultánea de las reglas de Conway. Primero recorre todas las filas y columnas para construir una estructura temporal (proximosEstados) donde guarda el próximo estado de cada autómata según su cantidad de vecinos vivos (contarVecinosFila:columna: y calcularProximoEstadoConVecinos:), y luego recorre nuevamente la grilla para aplicar todos esos estados resultantes sobre cada casilla mediante aplicarEstado:
+
+avanzarGeneracion
+	| proximosEstados |
+	proximosEstados := (1 to: filas) collect: [ :i |
+		(1 to: columnas) collect: [ :j |
+			| automata vecinos |
+			automata := self casillaEnFila: i columna: j.
+			vecinos := self contarVecinosFila: i columna: j.
+			automata calcularProximoEstadoConVecinos: vecinos ] ].
+
+	1 to: filas do: [ :i |
+		1 to: columnas do: [ :j |
+			(self casillaEnFila: i columna: j)
+				aplicarEstado: ((proximosEstados at: i) at: j) ] ]
+
+//El método calcularPoblacion no recibe parámetros y devuelve un número entero con la cantidad total de autómatas vivos en el tablero. Inicializa un contador (total) en 0, recorre todas las filas de 1 a filas y todas las columnas de 1 a columnas, y suma 1 por cada casilla cuyo método estaVivo devuelva verdadero.
+
+calcularPoblacion
+	| total |
+	total := 0.
+	1 to: filas do: [ :i |
+		1 to: columnas do: [ :j |
+			((self casillaEnFila: i columna: j) estaVivo)
+				ifTrue: [ total := total + 1 ] ] ].
+	^ total
+
+//El método cambiarAncho: recibe un parámetro llamado nuevoAncho y modifica el ancho del tablero manteniendo el largo actual. Internamente invoca a self configurarFilas: filas columnas: nuevoAncho para regenerar la matriz de casillas con la cantidad de filas existente y el nuevo número de columnas.
+
+cambiarAncho: nuevoAncho
+	self configurarFilas: filas columnas: nuevoAncho
+
+//El método cambiarLargo: recibe un parámetro llamado nuevoLargo y modifica el largo del tablero manteniendo el ancho actual. Internamente invoca a self configurarFilas: nuevoLargo columnas: columnas para regenerar la matriz de casillas con el nuevo número de filas y la cantidad de columnas existente.
+
+cambiarLargo: nuevoLargo
+	self configurarFilas: nuevoLargo columnas: columnas
+
+//El método casillaEnFila:columna: recibe dos parámetros (fila y columna) y devuelve el objeto Automata almacenado en esa coordenada del tablero. Accede primero a la fila correspondiente en la variable de instancia casillas ((casillas at: fila)) y luego a la posición de la columna ((... at: columna))
+
+casillaEnFila: fila columna: columna
+	^ (casillas at: fila) at: columna
+
+//El método columnas no recibe parámetros y devuelve el valor almacenado en la variable de instancia columnas, indicando la cantidad actual de columnas (ancho) del tablero.
+
+columnas
+	^ columnas
+
+//El método configurarFilas:columnas: recibe dos parámetros (cantidadFilas y cantidadColumnas) y construye o redimensiona la grilla del tablero. Asigna ambos valores a las variables de instancia filas y columnas, y crea en casillas una colección de filas de 1 a filas donde cada fila contiene una colección de 1 a columnas inicializada con nuevas instancias de Automata.
+
+configurarFilas: cantidadFilas columnas: cantidadColumnas
+	filas := cantidadFilas.
+	columnas := cantidadColumnas.
+	casillas := (1 to: filas) collect: [ :i |
+		(1 to: columnas) collect: [ :j | Automata new ] ]
+
+//El método contarVecinosFila:columna: recibe dos coordenadas (fila y columna) y devuelve un entero con la cantidad de celdas vecinas vivas alrededor de esa posición. Recorre los desplazamientos relativos de filas y columnas entre -1 y 1 omitiendo la propia celda (df = 0 y dc = 0). Si el slot toroidal es verdadero, envuelve las coordenadas usando aritmética modular en base 1 (((fila - 1 + df) \\ filas) + 1 y ((columna - 1 + dc) \\ columnas) + 1) para conectar bordes opuestos (izquierda con derecha y arriba con abajo); si toroidal es falso, calcula la posición directa y verifica los límites con estaDentroFila:columna:. Finalmente suma 1 a cantidad por cada vecino válido cuyo autómata responda verdadero a estaVivo.
+
+contarVecinosFila: fila columna: columna
+	| cantidad |
+	cantidad := 0.
+	(-1 to: 1) do: [ :df |
+		(-1 to: 1) do: [ :dc |
+			| nf nc esValida |
+			(df = 0 and: [ dc = 0 ]) ifFalse: [
+				toroidal
+					ifTrue: [
+						nf := ((fila - 1 + df) \\ filas) + 1.
+						nc := ((columna - 1 + dc) \\ columnas) + 1.
+						esValida := true ]
+					ifFalse: [
+						nf := fila + df.
+						nc := columna + dc.
+						esValida := self estaDentroFila: nf columna: nc ].
+				(esValida and: [ (self casillaEnFila: nf columna: nc) estaVivo ])
+					ifTrue: [ cantidad := cantidad + 1 ] ] ] ].
+	^ cantidad
+
+//El método estaDentroFila:columna: recibe dos coordenadas (f y c) y devuelve un booleano indicando si la posición cae dentro de los límites válidos de la grilla. Verifica que f esté entre 1 y filas y que c esté entre 1 y columnas.
+
+estaDentroFila: f columna: c
+	^ (f between: 1 and: filas) and: [ c between: 1 and: columnas ]
+
+//El método filas no recibe parámetros y devuelve el valor almacenado en la variable de instancia filas, indicando la cantidad actual de filas (largo) del tablero
+
+filas
+	^ filas
+
+//El método initialize no recibe parámetros y establece el estado inicial por defecto de cada nueva instancia de Tablero. Invoca a super initialize, inicializa toroidal en false (borde finito por defecto) y llama a self configurarFilas: 10 columnas: 10 para crear una grilla inicial de 10 por 10 autómatas.
+
+initialize
+	super initialize.
+	toroidal := false.
+	self configurarFilas: 10 columnas: 10
+
+//El método mostrarPoblacion no recibe parámetros y escribe en el Transcript la cantidad total de autómatas vivos junto con una representación visual de la grilla. Primero imprime la línea con el total obtenido de self calcularPoblacion y luego recorre cada fila y columna mostrando 'O ' si la casilla está viva (estaVivo) o '. ' si está muerta, separando cada fila con un salto de línea.
+
+mostrarPoblacion
+	Transcript
+		show: 'Poblacion: ', self calcularPoblacion printString;
+		cr.
+	1 to: filas do: [ :i |
+		1 to: columnas do: [ :j |
+			| simbolo |
+			simbolo := ((self casillaEnFila: i columna: j) estaVivo)
+				ifTrue: [ 'O ' ]
+				ifFalse: [ '. ' ].
+			Transcript show: simbolo ].
+		Transcript cr ]
+
+//El método toroidal no recibe parámetros y devuelve el valor booleano almacenado en la variable de instancia toroidal, permitiendo consultar sin modificar si el modo de borde toroidal está activado (true) o desactivado (false).
+
+toroidal
+	^ toroidal
+
+
+//==============================================================================
+// CLASE TABLEROVISTA (INCLUYE NUEVOS BOTONES Y ESTADO DEL BORDE TOROIDAL EN BARRA)
+//==============================================================================
+
+//La clase TableroVista provee una interfaz gráfica interactiva en Morphic para visualizar y controlar un tablero del Juego de la Vida de Conway, hereda de Morph y pertenece al paquete JuegoDeLaVidaDeConway. Declara las variables de instancia tablero, tamanoCelda, corriendo, generacion y etiquetaInfo, y se encarga de dibujar la grilla, responder a clics del usuario, avanzar generaciones de forma manual o automática, generar configuraciones aleatorias, activar o desactivar el borde toroidal, redimensionar el tablero y mostrar en tiempo real la generación, población y estado del borde toroidal en la barra superior.
+
+Morph << #TableroVista
+	slots: { #tablero . #tamanoCelda . #corriendo . #generacion . #etiquetaInfo };
+	package: 'JuegoDeLaVidaDeConway'
+
+//El método abrirVentana no recibe parámetros y construye y abre en el mundo de Morphic una ventana interactiva (SystemWindow titulada 'Juego de la Vida de Conway') que combina la vista del tablero con una barra superior de controles. Crea los botones Siguiente Gen (vinculado a #paso), Play / Pausa (que invierte el booleano corriendo), Aleatorio (vinculado a #generarAleatorio para poblar el tablero al azar), Borde Toroidal (vinculado a #alternarModoToroidal para activar o desactivar la continuidad entre bordes opuestos), Cambiar Tamano (vinculado a #pedirNuevoTamano) y Limpiar (que reconfigura el tablero con sus filas y columnas actuales, reinicia generacion en 0, actualiza la información y marca la vista para redibujar), agrega la etiqueta etiquetaInfo a la barra y ubica ambos componentes dentro de la ventana antes de abrirla con openInWorld.
+
+abrirVentana
+	| ventana barra btnPaso btnPlay btnAleatorio btnToroidal btnTamano btnLimpiar |
+	ventana := SystemWindow labelled: 'Juego de la Vida de Conway'.
+	barra := Morph new
+		layoutPolicy: RowLayout new;
+		color: Color darkGray;
+		yourself.
+
+	btnPaso := SimpleButtonMorph new
+		label: 'Siguiente Gen';
+		target: self;
+		actionSelector: #paso;
+		yourself.
+
+	btnPlay := SimpleButtonMorph new
+		label: 'Play / Pausa';
+		target: [ corriendo := corriendo not ];
+		actionSelector: #value;
+		yourself.
+
+	btnAleatorio := SimpleButtonMorph new
+		label: 'Aleatorio';
+		target: self;
+		actionSelector: #generarAleatorio;
+		yourself.
+
+	btnToroidal := SimpleButtonMorph new
+		label: 'Borde Toroidal';
+		target: self;
+		actionSelector: #alternarModoToroidal;
+		yourself.
+
+	btnTamano := SimpleButtonMorph new
+		label: 'Cambiar Tamano';
+		target: self;
+		actionSelector: #pedirNuevoTamano;
+		yourself.
+
+	btnLimpiar := SimpleButtonMorph new
+		label: 'Limpiar';
+		target: [
+			tablero configurarFilas: tablero filas columnas: tablero columnas.
+			generacion := 0.
+			self actualizarInfo.
+			self changed ];
+		actionSelector: #value;
+		yourself.
+
+	self actualizarInfo.
+	barra
+		addMorphBack: btnPaso;
+		addMorphBack: btnPlay;
+		addMorphBack: btnAleatorio;
+		addMorphBack: btnToroidal;
+		addMorphBack: btnTamano;
+		addMorphBack: btnLimpiar;
+		addMorphBack: etiquetaInfo.
+
+	ventana addMorph: barra frame: (0@0 corner: 1@0.12).
+	ventana addMorph: self frame: (0@0.12 corner: 1@1).
+	ventana openInWorld
+
+//El método actualizarDimensionVisual no recibe parámetros y ajusta el tamaño gráfico del Morph de acuerdo con las dimensiones del tablero y el tamaño de cada celda. Calcula el ancho como tablero columnas * tamanoCelda y el alto como tablero filas * tamanoCelda mediante el punto @, asigna ese tamaño con self extent: y envía self changed para solicitar el redibujado.
+
+actualizarDimensionVisual
+	self extent: (tablero columnas * tamanoCelda) @ (tablero filas * tamanoCelda).
+	self changed
+
+//El método actualizarInfo no recibe parámetros y refresca el texto que muestra la generación, la población viva actual y el estado del borde toroidal en la barra de la interfaz. Si etiquetaInfo no es nil, consulta tablero toroidal (sin alterarlo) para mostrar 'Activado' o 'Desactivado' junto con el número de generación actual (generacion printString) y el total de células vivas obtenido de tablero calcularPoblacion printString.
+
+actualizarInfo
+	| estadoBorde |
+	etiquetaInfo ifNotNil: [
+		estadoBorde := tablero toroidal
+			ifTrue: [ 'Activado' ]
+			ifFalse: [ 'Desactivado' ].
+		etiquetaInfo contents:
+			'  Generacion: ', generacion printString,
+			'  |  Poblacion: ', tablero calcularPoblacion printString,
+			'  |  Borde toroidal: ', estadoBorde ]
+
+//El método alternarModoToroidal no recibe parámetros y responde al botón Borde Toroidal de la barra. Invoca tablero alternarToroidal para invertir el modo de borde en el modelo y luego llama a self actualizarInfo y self changed para reflejar inmediatamente en la barra si el borde quedó 'Activado' o 'Desactivado'.
+
+alternarModoToroidal
+	tablero alternarToroidal.
+	self actualizarInfo.
+	self changed
+
+//El método drawOn: recibe un lienzo gráfico (aCanvas) y dibuja la grilla completa del tablero sobre la pantalla. Primero invoca a super drawOn: aCanvas y luego recorre cada fila de 1 a tablero filas y cada columna de 1 a tablero columnas para calcular el rectángulo de cada celda según self left, self top y tamanoCelda; pinta cada celda de verde oscuro (Color green muchDarker) si su autómata está vivo (estaVivo) o de blanco (Color white) si está muerto, y traza su borde de 1 píxel en gris claro (Color lightGray).
+
+drawOn: aCanvas
+	super drawOn: aCanvas.
+	1 to: tablero filas do: [ :f |
+		1 to: tablero columnas do: [ :c |
+			| rect colorCelda |
+			rect := ((self left + ((c - 1) * tamanoCelda)) @ (self top + ((f - 1) * tamanoCelda)))
+				extent: (tamanoCelda @ tamanoCelda).
+			colorCelda := ((tablero casillaEnFila: f columna: c) estaVivo)
+				ifTrue: [ Color green muchDarker ]
+				ifFalse: [ Color white ].
+			aCanvas fillRectangle: rect color: colorCelda.
+			aCanvas frameRectangle: rect width: 1 color: Color lightGray ] ]
+
+//El método generarAleatorio no recibe parámetros y responde al botón Aleatorio de la barra. Invoca tablero aleatorizar para llenar el tablero con formas aleatorias, reinicia el contador generacion en 0, actualiza la etiqueta informativa con self actualizarInfo y solicita el redibujado mediante self changed, dejando la grilla lista para evolucionar al presionar Play / Pausa.
+
+generarAleatorio
+	tablero aleatorizar.
+	generacion := 0.
+	self actualizarInfo.
+	self changed
+
+//El método handlesMouseDown: recibe un evento (anEvent) y devuelve true para indicar que este Morph acepta y maneja los eventos de clic del mouse sobre su área.
+
+handlesMouseDown: anEvent
+	^ true
+
+//El método initialize no recibe parámetros y configura los valores iniciales de la vista interactiva al crearse. Invoca a super initialize, crea una nueva instancia de Tablero en tablero, fija tamanoCelda en 24, inicializa corriendo en false y generacion en 0, crea la etiqueta etiquetaInfo como un StringMorph blanco, actualiza la información en pantalla con self actualizarInfo y ajusta el tamaño visual mediante self actualizarDimensionVisual.
+
+initialize
+	super initialize.
+	tablero := Tablero new.
+	tamanoCelda := 24.
+	corriendo := false.
+	generacion := 0.
+	etiquetaInfo := StringMorph new
+		color: Color white;
+		yourself.
+	self actualizarInfo.
+	self actualizarDimensionVisual
+
+//El método mouseDown: recibe un evento del mouse (anEvent) y alterna el estado de la celda sobre la que se hizo clic. Calcula la posición relativa respecto de self position, convierte las coordenadas x e y en índices de columna y fila dividiendo por tamanoCelda y sumando 1, y si la posición está dentro del tablero (estaDentroFila:columna:), invoca alternarEnFila:columna: sobre tablero, llama a self actualizarInfo y marca la vista con self changed para redibujarla.
+
+mouseDown: anEvent
+	| posRelativa fila columna |
+	posRelativa := anEvent position - self position.
+	columna := (posRelativa x // tamanoCelda) + 1.
+	fila := (posRelativa y // tamanoCelda) + 1.
+	(tablero estaDentroFila: fila columna: columna) ifTrue: [
+		tablero alternarEnFila: fila columna: columna.
+		self actualizarInfo.
+		self changed ]
+
+//El método paso no recibe parámetros y hace avanzar la simulación una generación desde la interfaz. Envía avanzarGeneracion a tablero, incrementa generacion en 1, actualiza la etiqueta con self actualizarInfo y solicita el redibujado mediante self changed.
+
+paso
+	tablero avanzarGeneracion.
+	generacion := generacion + 1.
+	self actualizarInfo.
+	self changed
+
+//El método pedirNuevoTamano no recibe parámetros y solicita mediante cuadros de diálogo del sistema la nueva cantidad de filas y de columnas para el tablero. Pide primero la cantidad de filas y luego la de columnas usando UIManager default request:initialAnswer: (cancelando con ^ self si el usuario cierra algún diálogo), convierte ambos valores a enteros usando los valores actuales como respaldo si no son válidos, y si ambos son mayores que 0, reconfigura el tablero con configurarFilas:columnas:, reinicia generacion en 0, actualiza la etiqueta con self actualizarInfo y ajusta el tamaño visual con self actualizarDimensionVisual.
+
+pedirNuevoTamano
+	| fTexto cTexto f c |
+	fTexto := UIManager default request: 'Cantidad de filas (largo):' initialAnswer: tablero filas printString.
+	fTexto ifNil: [ ^ self ].
+	cTexto := UIManager default request: 'Cantidad de columnas (ancho):' initialAnswer: tablero columnas printString.
+	cTexto ifNil: [ ^ self ].
+	f := fTexto asInteger ifNil: [ tablero filas ].
+	c := cTexto asInteger ifNil: [ tablero columnas ].
+	(f > 0 and: [ c > 0 ]) ifTrue: [
+		tablero configurarFilas: f columnas: c.
+		generacion := 0.
+		self actualizarInfo.
+		self actualizarDimensionVisual ]
+
+//El método step no recibe parámetros y ejecuta un paso de simulación automático cuando la vista está en modo activo. Evalúa corriendo ifTrue: [ self paso ], por lo que solo avanza una generación (y actualiza la información y el dibujo) si corriendo es verdadero.
+
+step
+	corriendo ifTrue: [ self paso ]
+
+//El método stepTime no recibe parámetros y devuelve el intervalo de tiempo en milisegundos entre cada ejecución automática del ciclo de pasos de Morphic. Retorna el valor entero 300 (comentado como milisegundos entre generaciones)
+
+stepTime
+	^ 300 "milisegundos entre generaciones"
+
+//La expresión TableroVista new abrirVentana en playground. es una sentencia de ejecución en Pharo Smalltalk que instancia una nueva vista gráfica del tablero y despliega en pantalla su ventana interactiva del Juego de la Vida de Conway. Al enviarse new a TableroVista, el entorno reserva la instancia y ejecuta initialize, dejando preparado un Tablero inicial de 10 por 10 celdas con el modo toroidal desactivado por defecto, un tamaño de celda de 24 píxeles, el estado corriendo en false, el contador generacion en 0, la etiqueta etiquetaInfo inicializada y actualizada, y las dimensiones visuales calculadas. A continuación, el mensaje abrirVentana construye una SystemWindow titulada 'Juego de la Vida de Conway', arma la barra superior con los botones de control (incluyendo Aleatorio y Borde Toroidal) y la etiqueta informativa, ubica la barra y la grilla dentro de la ventana y la abre en el entorno con openInWorld, sin almacenar la instancia en una variable local para su posterior referencia por código.
+
+TableroVista new abrirVentana.
