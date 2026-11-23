@@ -5,12 +5,12 @@
 **Tecnología:** Pharo 14 (Smalltalk) + Morphic  
 
 ### 👥 Integrantes del Grupo 19
-* Fedorchuk, Francisco
-* Fernandez, Santiago
-* Ludemann, Facundo
-* Ortiz, Benito de Jesús
-* Tomsich, Walter Daniel
-* Viola, Yara Yani
+* Fedorchuk, Francisco.
+* Fernandez, Santiago.
+* Ludemann, Facundo.
+* Viola, Yara Yani.
+* Ortiz, Benito de Jesús.
+* Tomsich, Walter Daniel.
 
 ---
 
